@@ -10,7 +10,6 @@ on:
     branches:
       - master
     paths-ignore:
-      - ".github/**"
       - "docs/**"
       - "README.md"
       - "res/**"
@@ -18,7 +17,95 @@ on:
       - "flatpak/**"
 
 jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+      
+      - name: Generate Bridge Code
+        run: |
+          cargo install flutter_rust_bridge_codegen
+          flutter_rust_bridge_codegen generate \
+            --rust-input src/bridge_generated.rs \
+            --dart-output lib/generated_bridge.dart \
+            --c-output windows/bridge_generated.h \
+            --dart-decl-output lib/bridge_definitions.dart
+          
+      - name: Get dependencies
+        run: |
+          cd flutter
+          flutter pub get
+      
+      - name: Build Windows
+        run: |
+          cd flutter
+          flutter build windows --release
+      
+      - name: Upload Windows Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: flutter/build/windows/runner/Release/*
+
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '11'
+      
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+      
+      - name: Generate Bridge Code
+        run: |
+          cargo install flutter_rust_bridge_codegen
+          flutter_rust_bridge_codegen generate \
+            --rust-input src/bridge_generated.rs \
+            --dart-output lib/generated_bridge.dart \
+            --c-output android/app/src/main/jniLibs/bridge_generated.h \
+            --dart-decl-output lib/bridge_definitions.dart
+          
+      - name: Get dependencies
+        run: |
+          cd flutter
+          flutter pub get
+      
+      - name: Build APK
+        run: |
+          cd flutter
+          flutter build apk --release --split-per-abi
+      
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: flutter/build/app/outputs/flutter-apk/*.apk
+
   run-ci:
     uses: ./.github/workflows/flutter-build.yml
     with:
-      upload-artifact: false
+      upload-artifact: true
